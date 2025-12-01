@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Counter/Simulator</title>
+    <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.7.5/dist/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #f4f6f8;
+            color: #1f2933;
+        }
+        header {
+            background: #1f6feb;
+            color: white;
+            padding: 1rem;
+            text-align: center;
+        }
+        .container {
+            padding: 1.5rem;
+            max-width: 1100px;
+            margin: auto;
+        }
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+        label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+        input {
+            width: 100%;
+            padding: 0.35rem 0.5rem;
+            border: 1px solid #cbd2d9;
+            border-radius: 4px;
+        }
+        .buttons {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+        button {
+            padding: 0.5rem 0.75rem;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button.start { background: #16a34a; color: white; }
+        button.pause { background: #f59e0b; color: white; }
+        button.stop { background: #ef4444; color: white; }
+        .status {
+            margin-top: 0.5rem;
+            font-weight: 600;
+        }
+        .slider {
+            margin: 1rem 0;
+        }
+        canvas {
+            background: white;
+            border: 1px solid #dfe3e6;
+            border-radius: 6px;
+            padding: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+<header>
+    <h1>Counter/Simulator</h1>
+    <p>Iterative model with live callbacks</p>
+</header>
+<div class="container">
+    <div class="controls">
+        <div>
+            <label for="xstart">xstart</label>
+            <input type="number" id="xstart" value="0" step="0.1" />
+        </div>
+        <div>
+            <label for="xend">xend</label>
+            <input type="number" id="xend" value="8" step="0.1" />
+        </div>
+        <div>
+            <label for="deltax">deltax</label>
+            <input type="number" id="deltax" value="0.2" step="0.05" />
+        </div>
+        <div>
+            <label for="timeEnd">timeEnd</label>
+            <input type="number" id="timeEnd" value="10" step="0.5" />
+        </div>
+        <div>
+            <label for="emit">emit</label>
+            <input type="number" id="emit" value="0.5" step="0.1" />
+        </div>
+        <div>
+            <label for="dt">dt (step)</label>
+            <input type="number" id="dt" value="0.05" step="0.01" />
+        </div>
+    </div>
+    <div class="buttons">
+        <button class="start" id="startBtn">Start</button>
+        <button class="pause" id="pauseBtn">Pause</button>
+        <button class="stop" id="stopBtn">Stop</button>
+    </div>
+    <div class="status" id="status">Idle</div>
+    <div class="slider">
+        <label for="timeSlider">View time slice:</label>
+        <input type="range" id="timeSlider" min="0" max="0" value="0" step="1" />
+        <span id="timeLabel">t = 0</span>
+    </div>
+    <canvas id="chart" width="800" height="400"></canvas>
+</div>
+<script>
+    const socket = io();
+    const slices = [];
+    let chart;
+
+    const ctx = document.getElementById('chart').getContext('2d');
+    chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'y(x, t)',
+                data: [],
+                borderColor: '#1f6feb',
+                backgroundColor: 'rgba(31, 111, 235, 0.1)',
+                fill: true,
+                tension: 0.2
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                x: { title: { display: true, text: 'x' } },
+                y: { title: { display: true, text: 'y' } }
+            }
+        }
+    });
+
+    function updateChart(slice) {
+        chart.data.labels = slice.x.map(v => v.toFixed(2));
+        chart.data.datasets[0].data = slice.y;
+        chart.data.datasets[0].label = `y(x, t=${slice.t})`;
+        chart.update();
+    }
+
+    function updateSlider() {
+        const slider = document.getElementById('timeSlider');
+        slider.max = Math.max(0, slices.length - 1);
+        slider.value = slider.max;
+        const slice = slices[slider.value];
+        if (slice) {
+            updateChart(slice);
+            document.getElementById('timeLabel').innerText = `t = ${slice.t}`;
+        }
+    }
+
+    function setStatus(text) {
+        document.getElementById('status').innerText = text;
+    }
+
+    document.getElementById('startBtn').addEventListener('click', () => {
+        slices.length = 0;
+        updateSlider();
+        const payload = {
+            xstart: document.getElementById('xstart').value,
+            xend: document.getElementById('xend').value,
+            deltax: document.getElementById('deltax').value,
+            timeEnd: document.getElementById('timeEnd').value,
+            emit: document.getElementById('emit').value,
+            dt: document.getElementById('dt').value
+        };
+        socket.emit('start', payload);
+        setStatus('Running...');
+    });
+
+    document.getElementById('pauseBtn').addEventListener('click', () => {
+        socket.emit('pause');
+    });
+
+    document.getElementById('stopBtn').addEventListener('click', () => {
+        socket.emit('stop');
+        slices.length = 0;
+        updateSlider();
+        setStatus('Stopped.');
+    });
+
+    document.getElementById('timeSlider').addEventListener('input', (e) => {
+        const idx = Number(e.target.value);
+        const slice = slices[idx];
+        if (slice) {
+            updateChart(slice);
+            document.getElementById('timeLabel').innerText = `t = ${slice.t}`;
+        }
+    });
+
+    socket.on('slice', (data) => {
+        slices.push(data);
+        updateSlider();
+    });
+
+    socket.on('started', () => setStatus('Running...'));
+    socket.on('stopped', () => setStatus('Stopped.'));
+    socket.on('paused', ({ paused }) => setStatus(paused ? 'Paused' : 'Running...'));
+    socket.on('simulation_complete', () => setStatus('Complete'));
+</script>
+</body>
+</html>
