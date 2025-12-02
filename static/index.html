@@ -69,6 +69,20 @@
             border-radius: 6px;
             padding: 0.5rem;
         }
+        textarea {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid #cbd2d9;
+            border-radius: 4px;
+            min-height: 120px;
+            font-family: monospace;
+            resize: vertical;
+        }
+        .error {
+            margin-top: 0.5rem;
+            color: #b42318;
+            font-weight: 600;
+        }
     </style>
 </head>
 <body>
@@ -103,12 +117,17 @@
             <input type="number" id="dt" value="0.05" step="0.01" />
         </div>
     </div>
+    <div>
+        <label for="functionInput">Function f(x, t, y)</label>
+        <textarea id="functionInput" placeholder="Enter function expression, e.g., -0.4*y + math.sin(x + t)">-0.4*y + math.sin(x + t)</textarea>
+    </div>
     <div class="buttons">
         <button class="start" id="startBtn">Start</button>
         <button class="pause" id="pauseBtn">Pause</button>
         <button class="stop" id="stopBtn">Stop</button>
     </div>
     <div class="status" id="status">Idle</div>
+    <div class="error" id="error"></div>
     <div class="slider">
         <label for="timeSlider">View time slice:</label>
         <input type="range" id="timeSlider" min="0" max="0" value="0" step="1" />
@@ -166,6 +185,10 @@
         document.getElementById('status').innerText = text;
     }
 
+    function setError(text) {
+        document.getElementById('error').innerText = text || '';
+    }
+
     document.getElementById('startBtn').addEventListener('click', () => {
         slices.length = 0;
         updateSlider();
@@ -175,10 +198,12 @@
             deltax: document.getElementById('deltax').value,
             timeEnd: document.getElementById('timeEnd').value,
             emit: document.getElementById('emit').value,
-            dt: document.getElementById('dt').value
+            dt: document.getElementById('dt').value,
+            function: document.getElementById('functionInput').value
         };
         socket.emit('start', payload);
         setStatus('Running...');
+        setError('');
     });
 
     document.getElementById('pauseBtn').addEventListener('click', () => {
@@ -190,6 +215,7 @@
         slices.length = 0;
         updateSlider();
         setStatus('Stopped.');
+        setError('');
     });
 
     document.getElementById('timeSlider').addEventListener('input', (e) => {
@@ -210,6 +236,10 @@
     socket.on('stopped', () => setStatus('Stopped.'));
     socket.on('paused', ({ paused }) => setStatus(paused ? 'Paused' : 'Running...'));
     socket.on('simulation_complete', () => setStatus('Complete'));
+    socket.on('simulation_error', ({ message }) => {
+        setStatus('Error');
+        setError(message);
+    });
 </script>
 </body>
 </html>
