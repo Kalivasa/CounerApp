@@ -129,6 +129,7 @@
         <button class="stop" id="stopBtn">Stop</button>
     </div>
     <div class="status" id="status">Idle</div>
+    <div id="cpuLoad">CPU Load: --</div>
     <div class="error" id="error"></div>
     <div class="function-header" id="functionDisplay">Computing: (none)</div>
     <div class="slider">
@@ -199,6 +200,12 @@
         display.innerText = `Computing: ${content}`;
     }
 
+    function setCpuLoad(value) {
+        const element = document.getElementById('cpuLoad');
+        const displayValue = typeof value === 'number' ? `${value.toFixed(1)}%` : '--';
+        element.innerText = `CPU Load: ${displayValue}`;
+    }
+
     document.getElementById('startBtn').addEventListener('click', () => {
         slices.length = 0;
         updateSlider();
@@ -255,6 +262,10 @@
     socket.on('simulation_error', ({ message }) => {
         setStatus('Error');
         setError(message);
+    });
+
+    socket.on('cpu', ({ usage }) => {
+        setCpuLoad(usage);
     });
 </script>
 </body>
