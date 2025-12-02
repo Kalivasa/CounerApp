@@ -2,7 +2,7 @@ import math
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Dict, List
+from typing import Callable, Dict, List
 
 from flask import Flask, send_from_directory
 from flask_socketio import SocketIO, emit
@@ -21,6 +21,8 @@ class SimulationState:
     time_end: float
     emit_interval: float
     dt: float = 0.05
+    func_text: str = ""
+    user_func: Callable[[float, float, float], float] | None = None
     running: bool = False
     paused: bool = False
     stop_event: threading.Event = field(default_factory=threading.Event)
@@ -39,9 +41,37 @@ state: SimulationState = None
 state_lock = threading.Lock()
 
 
-def compute_step(y: List[float], dt: float, t: float, x_values: List[float]) -> List[float]:
-    # Simple iterative update: dy/dt = -0.4 * y + sin(x + t)
-    return [value + dt * (-0.4 * value + math.sin(x + t)) for value, x in zip(y, x_values)]
+def safe_eval_function(func_text: str) -> Callable[[float, float, float], float]:
+    """Build a callable f(x, t, y) from user-provided text."""
+
+    if not func_text or not func_text.strip():
+        raise ValueError("Function must not be empty.")
+
+    cleaned_text = func_text.strip()
+    allowed_globals = {"__builtins__": {}, "math": math}
+
+    if "lambda" in cleaned_text:
+        candidate = eval(cleaned_text, allowed_globals, {})
+        if not callable(candidate):
+            raise ValueError("Provided lambda is not callable.")
+
+        def user_func(x: float, t: float, y: float) -> float:
+            return candidate(x, t, y)
+
+        return user_func
+
+    compiled = compile(cleaned_text, "<user_function>", "eval")
+
+    def user_func(x: float, t: float, y: float) -> float:
+        return eval(compiled, allowed_globals, {"x": x, "t": t, "y": y})
+
+    return user_func
+
+
+def apply_user_function(
+    values: List[float], dt: float, t: float, x_values: List[float], func: Callable[[float, float, float], float]
+) -> List[float]:
+    return [value + dt * func(x, t, value) for value, x in zip(values, x_values)]
 
 
 def simulation_loop(sim_state: SimulationState) -> None:
@@ -53,8 +83,15 @@ def simulation_loop(sim_state: SimulationState) -> None:
             time.sleep(0.05)
             continue
 
-        sim_state.y_values = compute_step(sim_state.y_values, sim_state.dt, sim_state.t, sim_state.x_values)
-        sim_state.t += sim_state.dt
+        try:
+            sim_state.y_values = apply_user_function(
+                sim_state.y_values, sim_state.dt, sim_state.t, sim_state.x_values, sim_state.user_func
+            )
+            sim_state.t += sim_state.dt
+        except Exception as exc:  # noqa: BLE001
+            socketio.emit("simulation_error", {"message": f"Error during simulation: {exc}"})
+            sim_state.stop_event.set()
+            break
 
         if sim_state.t - last_emit >= sim_state.emit_interval - 1e-9:
             emit_slice(sim_state)
@@ -102,7 +139,23 @@ def start_simulation(data: Dict):
         emit_interval = max(float(data.get("emit", 0.5)), 0.01)
         dt = max(float(data.get("dt", 0.05)), 0.01)
 
-        state = SimulationState(xstart=xstart, xend=xend, deltax=deltax, time_end=time_end, emit_interval=emit_interval, dt=dt)
+        func_text = data.get("function", "")
+        try:
+            user_func = safe_eval_function(func_text)
+        except Exception as exc:  # noqa: BLE001
+            emit("simulation_error", {"message": f"Invalid function: {exc}"})
+            return
+
+        state = SimulationState(
+            xstart=xstart,
+            xend=xend,
+            deltax=deltax,
+            time_end=time_end,
+            emit_interval=emit_interval,
+            dt=dt,
+            func_text=func_text,
+            user_func=user_func,
+        )
         state.reset_grid()
 
         thread = threading.Thread(target=simulation_loop, args=(state,), daemon=True)
