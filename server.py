@@ -110,6 +110,7 @@ def emit_slice(sim_state: SimulationState) -> None:
         "t": round(sim_state.t, 3),
         "x": sim_state.x_values,
         "y": sim_state.y_values,
+        "function": sim_state.func_text,
     }
     socketio.emit("slice", payload)
 
@@ -161,7 +162,7 @@ def start_simulation(data: Dict):
         thread = threading.Thread(target=simulation_loop, args=(state,), daemon=True)
         state.thread = thread
         thread.start()
-    emit("started", {"message": "Simulation started."})
+    emit("started", {"message": "Simulation started.", "function": func_text})
 
 
 @socketio.on("pause")
