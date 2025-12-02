@@ -102,6 +102,18 @@
             <label for="dt">dt (step)</label>
             <input type="number" id="dt" value="0.05" step="0.01" />
         </div>
+        <div>
+            <label for="equation">dy/dt =</label>
+            <input type="text" id="equation" value="-0.4 * y + sin(x + t)" />
+        </div>
+        <div>
+            <label for="initial">y(x, 0) =</label>
+            <input type="text" id="initial" value="sin(x)" />
+        </div>
+        <div>
+            <label for="parameters">parameters (JSON)</label>
+            <input type="text" id="parameters" placeholder='{"k": 0.4}' />
+        </div>
     </div>
     <div class="buttons">
         <button class="start" id="startBtn">Start</button>
@@ -151,6 +163,28 @@
         chart.update();
     }
 
+    function parseParameters() {
+        const text = document.getElementById('parameters').value.trim();
+        if (!text) return {};
+        try {
+            return JSON.parse(text);
+        } catch (err) {
+            console.warn('Failed to parse parameters JSON', err);
+            return {};
+        }
+    }
+
+    function buildXValues(data) {
+        const xs = [];
+        const step = Number(data.deltax);
+        let current = Number(data.xstart);
+        for (let i = 0; i < data.y_values.length; i++) {
+            xs.push(current);
+            current = Number((current + step).toFixed(12));
+        }
+        return xs;
+    }
+
     function updateSlider() {
         const slider = document.getElementById('timeSlider');
         slider.max = Math.max(0, slices.length - 1);
@@ -175,7 +209,10 @@
             deltax: document.getElementById('deltax').value,
             timeEnd: document.getElementById('timeEnd').value,
             emit: document.getElementById('emit').value,
-            dt: document.getElementById('dt').value
+            dt: document.getElementById('dt').value,
+            equation: document.getElementById('equation').value,
+            initial: document.getElementById('initial').value,
+            parameters: parseParameters()
         };
         socket.emit('start', payload);
         setStatus('Running...');
@@ -202,7 +239,12 @@
     });
 
     socket.on('slice', (data) => {
-        slices.push(data);
+        const slice = {
+            t: data.time,
+            x: buildXValues(data),
+            y: data.y_values
+        };
+        slices.push(slice);
         updateSlider();
     });
 
