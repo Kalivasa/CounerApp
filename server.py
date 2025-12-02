@@ -1,8 +1,10 @@
 import math
 import threading
 import time
-from dataclasses import dataclass, field
 from typing import Callable, Dict, List
+
+import psutil
+from dataclasses import dataclass, field
 
 from flask import Flask, send_from_directory
 from flask_socketio import SocketIO, emit
@@ -11,6 +13,7 @@ from flask_socketio import SocketIO, emit
 app = Flask(__name__, static_folder="static")
 app.config["SECRET_KEY"] = "secret!"
 socketio = SocketIO(app, cors_allowed_origins="*")
+cpu_thread_started = threading.Event()
 
 
 @dataclass
@@ -116,6 +119,13 @@ def emit_slice(sim_state: SimulationState) -> None:
     socketio.emit("slice", payload)
 
 
+def cpu_monitor() -> None:
+    while True:
+        cpu_usage = psutil.cpu_percent(interval=None)
+        socketio.emit("cpu", {"usage": cpu_usage})
+        time.sleep(1.5)
+
+
 @app.route("/")
 def index():
     return send_from_directory(app.static_folder, "index.html")
@@ -186,5 +196,15 @@ def stop_simulation():
     emit("stopped", {"message": "Simulation stopped."})
 
 
+def ensure_cpu_monitor_running() -> None:
+    if cpu_thread_started.is_set():
+        return
+
+    cpu_thread_started.set()
+    thread = threading.Thread(target=cpu_monitor, daemon=True)
+    thread.start()
+
+
 if __name__ == "__main__":
+    ensure_cpu_monitor_running()
     socketio.run(app, host="0.0.0.0", port=5000)
