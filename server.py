@@ -87,6 +87,7 @@ def simulation_loop(sim_state: SimulationState) -> None:
             sim_state.y_values = apply_user_function(
                 sim_state.y_values, sim_state.dt, sim_state.t, sim_state.x_values, sim_state.user_func
             )
+            print(f"[SERVER] computing step: t={sim_state.t:.3f}, first y={sim_state.y_values[0]:.4f}")
             sim_state.t += sim_state.dt
         except Exception as exc:  # noqa: BLE001
             socketio.emit("simulation_error", {"message": f"Error during simulation: {exc}"})
