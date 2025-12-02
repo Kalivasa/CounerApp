@@ -63,6 +63,12 @@
         .slider {
             margin: 1rem 0;
         }
+        .function-header {
+            margin: 1rem 0 0.5rem;
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: #111827;
+        }
         canvas {
             background: white;
             border: 1px solid #dfe3e6;
@@ -128,6 +134,7 @@
     </div>
     <div class="status" id="status">Idle</div>
     <div class="error" id="error"></div>
+    <div class="function-header" id="functionDisplay">Computing: (none)</div>
     <div class="slider">
         <label for="timeSlider">View time slice:</label>
         <input type="range" id="timeSlider" min="0" max="0" value="0" step="1" />
@@ -189,6 +196,12 @@
         document.getElementById('error').innerText = text || '';
     }
 
+    function setFunctionText(text) {
+        const display = document.getElementById('functionDisplay');
+        const content = text && text.trim() ? text.trim() : '(none)';
+        display.innerText = `Computing: ${content}`;
+    }
+
     document.getElementById('startBtn').addEventListener('click', () => {
         slices.length = 0;
         updateSlider();
@@ -203,6 +216,7 @@
         };
         socket.emit('start', payload);
         setStatus('Running...');
+        setFunctionText('');
         setError('');
     });
 
@@ -215,6 +229,7 @@
         slices.length = 0;
         updateSlider();
         setStatus('Stopped.');
+        setFunctionText('');
         setError('');
     });
 
@@ -229,10 +244,14 @@
 
     socket.on('slice', (data) => {
         slices.push(data);
+        setFunctionText(data.function);
         updateSlider();
     });
 
-    socket.on('started', () => setStatus('Running...'));
+    socket.on('started', ({ function: funcText } = {}) => {
+        setStatus('Running...');
+        setFunctionText(funcText);
+    });
     socket.on('stopped', () => setStatus('Stopped.'));
     socket.on('paused', ({ paused }) => setStatus(paused ? 'Paused' : 'Running...'));
     socket.on('simulation_complete', () => setStatus('Complete'));
