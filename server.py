@@ -122,8 +122,8 @@ def emit_slice(sim_state: SimulationState) -> None:
 def cpu_monitor() -> None:
     while True:
         cpu_usage = psutil.cpu_percent(interval=None)
-        socketio.emit("cpu", {"usage": cpu_usage})
-        time.sleep(1.5)
+        socketio.emit("server_cpu", {"cpu": cpu_usage})
+        time.sleep(0.5)
 
 
 @app.route("/")
@@ -201,8 +201,12 @@ def ensure_cpu_monitor_running() -> None:
         return
 
     cpu_thread_started.set()
-    thread = threading.Thread(target=cpu_monitor, daemon=True)
-    thread.start()
+    socketio.start_background_task(cpu_monitor)
+
+
+@socketio.on("connect")
+def handle_connect():
+    ensure_cpu_monitor_running()
 
 
 if __name__ == "__main__":

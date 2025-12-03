@@ -63,9 +63,31 @@
         .slider {
             margin: 1rem 0;
         }
+        .equation-block {
+            background: white;
+            border: 1px solid #dfe3e6;
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+        }
+        .equation-title {
+            font-size: 0.95rem;
+            color: #4b5563;
+            margin-bottom: 0.25rem;
+            font-weight: 700;
+            letter-spacing: 0.01em;
+            text-transform: uppercase;
+        }
+        .equation-text {
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: #0f172a;
+            letter-spacing: 0.02em;
+        }
         .function-header {
-            margin: 1rem 0 0.5rem;
-            font-size: 1.05rem;
+            margin: 0.5rem 0 0.5rem;
+            font-size: 1rem;
             font-weight: 700;
             color: #111827;
         }
@@ -89,6 +111,30 @@
             color: #b42318;
             font-weight: 600;
         }
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 0.75rem;
+            margin: 1rem 0;
+        }
+        .metric-card {
+            background: white;
+            border: 1px solid #dfe3e6;
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+        }
+        .metric-title {
+            font-size: 0.9rem;
+            color: #4b5563;
+            margin-bottom: 0.25rem;
+            font-weight: 600;
+        }
+        .metric-value {
+            font-size: 1.25rem;
+            font-weight: 800;
+            color: #0f172a;
+        }
     </style>
 </head>
 <body>
@@ -97,6 +143,10 @@
     <p>Iterative model with live callbacks</p>
 </header>
 <div class="container">
+    <div class="equation-block">
+        <div class="equation-title">Simulated equation</div>
+        <div class="equation-text" id="equationText">dy/dt = –0.4·y(x, t) + sin(x + t)</div>
+    </div>
     <div class="controls">
         <div>
             <label for="xstart">xstart</label>
@@ -129,7 +179,16 @@
         <button class="stop" id="stopBtn">Stop</button>
     </div>
     <div class="status" id="status">Idle</div>
-    <div id="cpuLoad">CPU Load: --</div>
+    <div class="metrics">
+        <div class="metric-card">
+            <div class="metric-title">Server CPU load</div>
+            <div class="metric-value" id="serverCpuValue">--%</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-title">Client CPU load</div>
+            <div class="metric-value" id="clientCpuValue">--%</div>
+        </div>
+    </div>
     <div class="error" id="error"></div>
     <div class="function-header" id="functionDisplay">Computing: (none)</div>
     <div class="slider">
@@ -144,6 +203,7 @@
     const slices = [];
     let chart;
     const DEFAULT_FUNCTION = '-0.4*y + math.sin(x + t)';
+    const CLIENT_SAMPLE_INTERVAL = 500;
 
     const ctx = document.getElementById('chart').getContext('2d');
     chart = new Chart(ctx, {
@@ -194,16 +254,48 @@
         document.getElementById('error').innerText = text || '';
     }
 
-    function setFunctionText(text) {
-        const display = document.getElementById('functionDisplay');
-        const content = text && text.trim() ? text.trim() : '(none)';
-        display.innerText = `Computing: ${content}`;
+    function prettifyFunction(rawText) {
+        const text = rawText && rawText.trim() ? rawText.trim() : DEFAULT_FUNCTION;
+        return text
+            .replace(/math\./g, '')
+            .replace(/\*/g, '·')
+            .replace(/\by\b/g, 'y(x, t)')
+            .replace(/-/g, '–')
+            .replace(/\s+/g, ' ')
+            .trim();
     }
 
-    function setCpuLoad(value) {
-        const element = document.getElementById('cpuLoad');
-        const displayValue = typeof value === 'number' ? `${value.toFixed(1)}%` : '--';
-        element.innerText = `CPU Load: ${displayValue}`;
+    function setFunctionText(text) {
+        const display = document.getElementById('functionDisplay');
+        const equationDisplay = document.getElementById('equationText');
+        const pretty = prettifyFunction(text);
+        const content = text && text.trim() ? text.trim() : '(none)';
+        display.innerText = `Computing: ${content}`;
+        equationDisplay.innerText = `dy/dt = ${pretty}`;
+    }
+
+    function setServerCpuLoad(value) {
+        const element = document.getElementById('serverCpuValue');
+        const displayValue = typeof value === 'number' ? `${value.toFixed(1)}%` : '--%';
+        element.innerText = displayValue;
+    }
+
+    function setClientCpuLoad(value) {
+        const element = document.getElementById('clientCpuValue');
+        const displayValue = typeof value === 'number' ? `${value.toFixed(1)}%` : '--%';
+        element.innerText = displayValue;
+    }
+
+    function startClientCpuMonitor() {
+        let lastSample = performance.now();
+        setInterval(() => {
+            const now = performance.now();
+            const elapsed = now - lastSample;
+            lastSample = now;
+            const delay = Math.max(0, elapsed - CLIENT_SAMPLE_INTERVAL);
+            const load = Math.min(100, (delay / CLIENT_SAMPLE_INTERVAL) * 100);
+            setClientCpuLoad(load);
+        }, CLIENT_SAMPLE_INTERVAL);
     }
 
     document.getElementById('startBtn').addEventListener('click', () => {
@@ -220,7 +312,7 @@
         };
         socket.emit('start', payload);
         setStatus('Running...');
-        setFunctionText('');
+        setFunctionText(payload.function);
         setError('');
     });
 
@@ -264,9 +356,12 @@
         setError(message);
     });
 
-    socket.on('cpu', ({ usage }) => {
-        setCpuLoad(usage);
+    socket.on('server_cpu', ({ cpu }) => {
+        setServerCpuLoad(cpu);
     });
+
+    setFunctionText(DEFAULT_FUNCTION);
+    startClientCpuMonitor();
 </script>
 </body>
 </html>
