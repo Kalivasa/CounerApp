@@ -85,12 +85,6 @@
             color: #0f172a;
             letter-spacing: 0.02em;
         }
-        .function-header {
-            margin: 0.5rem 0 0.5rem;
-            font-size: 1rem;
-            font-weight: 700;
-            color: #111827;
-        }
         canvas {
             background: white;
             border: 1px solid #dfe3e6;
@@ -190,7 +184,6 @@
         </div>
     </div>
     <div class="error" id="error"></div>
-    <div class="function-header" id="functionDisplay">Computing: (none)</div>
     <div class="slider">
         <label for="timeSlider">View time slice:</label>
         <input type="range" id="timeSlider" min="0" max="0" value="0" step="1" />
@@ -266,11 +259,8 @@
     }
 
     function setFunctionText(text) {
-        const display = document.getElementById('functionDisplay');
         const equationDisplay = document.getElementById('equationText');
         const pretty = prettifyFunction(text);
-        const content = text && text.trim() ? text.trim() : '(none)';
-        display.innerText = `Computing: ${content}`;
         equationDisplay.innerText = `dy/dt = ${pretty}`;
     }
 
